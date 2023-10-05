@@ -25,22 +25,22 @@ int genFuncBodyFromDag(const struct parser_dag *dag, FILE *file) {
                         case PARSER_DAG_:
                                 return -1;
                         case PARSER_DAG_VAL:
-                                fprintf(file, "t%d = %f;\n", varId, dag->val);
+                                fprintf(file, "double t%d = %f;\n", varId, dag->val);
                                 break;
                         case PARSER_DAG_NEG:
-                                fprintf(file, "t%d = -1 * t%d;\n", varId, rightVarId);
+                                fprintf(file, "double t%d = -1 * t%d;\n", varId, rightVarId);
                                 break;
                         case PARSER_DAG_MUL:
-                                fprintf(file, "t%d = t%d * t%d;\n", varId, leftVarId, rightVarId);
+                                fprintf(file, "double t%d = t%d * t%d;\n", varId, leftVarId, rightVarId);
                                 break;
                         case PARSER_DAG_DIV:
-                                fprintf(file, "t%d = t%d %% t%d;\n", varId, leftVarId, rightVarId);
+                                fprintf(file, "double t%d = t%d ? (t%d / t%d) : 0.0;\n", varId, rightVarId, leftVarId, rightVarId);
                                 break;
                         case PARSER_DAG_ADD:
-                                fprintf(file, "t%d = t%d + t%d;\n", varId, leftVarId, rightVarId);
+                                fprintf(file, "double t%d = t%d + t%d;\n", varId, leftVarId, rightVarId);
                                 break;
                         case PARSER_DAG_SUB:
-                                fprintf(file, "t%d = t%d - t%d;\n", varId, leftVarId, rightVarId);
+                                fprintf(file, "double t%d = t%d - t%d;\n", varId, leftVarId, rightVarId);
                                 break;
                 }
                 varId++;
@@ -66,9 +66,9 @@ int
 main(int argc, char *argv[])
 {
 	const char *CFILE = "out.c";
+        const char *SOFILE = "out.so";
 	struct parser *parser;
 	/*
-        const char *SOFILE = "out.so";
 	struct jitc *jitc;
 	evaluate_t fnc;
         */
@@ -100,14 +100,12 @@ main(int argc, char *argv[])
 
 	/* JIT compile */
 
-        /*
 	if (jitc_compile(CFILE, SOFILE)) {
 		file_delete(CFILE);
 		TRACE(0);
 		return -1;
 	}
-	file_delete(CFILE);
-        */
+	/* file_delete(CFILE); */
 
 	/* dynamic load */
         /*
