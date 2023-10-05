@@ -28,6 +28,14 @@
 
 /* research the above Needed API and design accordingly */
 
+/**
+ * definition of struct jitc
+ * needs to hold handle which we get when
+ * dlopen is called on the .so file
+ */
+struct jitc {
+        void* handle;
+};
 
 /**
  * implementation of jitc_compile
@@ -76,4 +84,33 @@ int jitc_compile(const char* input, const char* output) {
                 }
         }
         return 0;
+}
+
+struct jitc* jitc_open(const char* pathname) {
+        struct jitc* jitc_ = malloc(sizeof(struct jitc));
+
+        jitc_->handle = dlopen(pathname, RTLD_NOW | RTLD_LOCAL);
+
+        if (jitc_->handle == NULL) {
+                TRACE("Handle is NULL");
+        }
+
+        return jitc_;
+}
+
+void jitc_close(struct jitc* jitc) {
+        if (jitc->handle != NULL) {
+                dlclose(jitc->handle);
+        }
+}
+
+long jitc_lookup(struct jitc* jitc, const char* symbol) {
+        void* addr = dlsym(jitc->handle, symbol);
+
+        if (NULL == addr) {
+                TRACE("couldn't find the address for the symbol");
+                return 0;
+        }
+
+        return (long)addr;
 }

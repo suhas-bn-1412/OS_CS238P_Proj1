@@ -68,10 +68,8 @@ main(int argc, char *argv[])
 	const char *CFILE = "out.c";
         const char *SOFILE = "out.so";
 	struct parser *parser;
-	/*
 	struct jitc *jitc;
 	evaluate_t fnc;
-        */
 	FILE *file;
 
 	/* usage */
@@ -105,10 +103,9 @@ main(int argc, char *argv[])
 		TRACE(0);
 		return -1;
 	}
-	/* file_delete(CFILE); */
+	file_delete(CFILE);
 
 	/* dynamic load */
-        /*
 	if (!(jitc = jitc_open(SOFILE)) ||
 	    !(fnc = (evaluate_t)jitc_lookup(jitc, "evaluate"))) {
 		file_delete(SOFILE);
@@ -117,12 +114,12 @@ main(int argc, char *argv[])
 		return -1;
 	}
 	printf("%f\n", fnc());
-        */
-	/* done */
-        /*
-	file_delete(SOFILE);
+	
+        /* done */
+	
+        file_delete(SOFILE);
 	jitc_close(jitc);
-        */
-	return 0;
+	
+        return 0;
 }
 
