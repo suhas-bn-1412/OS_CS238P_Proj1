@@ -11,6 +11,8 @@
 #include "parser.h"
 #include "system.h"
 
+#include <math.h>
+
 /* export LD_LIBRARY_PATH=. */
 
 int varId = 0;
@@ -54,13 +56,17 @@ generate(const struct parser_dag *dag, FILE *file)
 {
 	/* YOUR CODE HERE */
         int valueVarId;
-        fprintf(file, "double evaluate(void) {\n");
+        fprintf(file, "double evaluate(double (*callback)(double)) {\n");
         valueVarId = genFuncBodyFromDag(dag, file);
-        fprintf(file, "return t%d;\n", valueVarId);
+        fprintf(file, "return callback(t%d);\n", valueVarId);
         fprintf(file, "}\n");
 }
 
-typedef double (*evaluate_t)(void);
+typedef double (*evaluate_t)(double (*)(double));
+
+double sigmoid(double val) {
+        return (exp(val))/(1 + exp(val));
+}
 
 int
 main(int argc, char *argv[])
@@ -106,20 +112,21 @@ main(int argc, char *argv[])
 	file_delete(CFILE);
 
 	/* dynamic load */
-	if (!(jitc = jitc_open(SOFILE)) ||
+
+        if (!(jitc = jitc_open(SOFILE)) ||
 	    !(fnc = (evaluate_t)jitc_lookup(jitc, "evaluate"))) {
 		file_delete(SOFILE);
 		jitc_close(jitc);
 		TRACE(0);
 		return -1;
 	}
-	printf("%f\n", fnc());
-	
+	printf("%f\n", fnc(&sigmoid));
+
         /* done */
-	
+
         file_delete(SOFILE);
 	jitc_close(jitc);
-	
+
         return 0;
 }
 
