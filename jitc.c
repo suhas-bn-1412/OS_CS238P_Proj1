@@ -102,6 +102,7 @@ void jitc_close(struct jitc* jitc) {
         if (jitc->handle != NULL) {
                 dlclose(jitc->handle);
         }
+        free(jitc);
 }
 
 long jitc_lookup(struct jitc* jitc, const char* symbol) {
