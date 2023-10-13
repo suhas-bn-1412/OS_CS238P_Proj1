@@ -50,14 +50,15 @@ struct jitc {
 int jitc_compile(const char* input, const char* output) {
         pid_t pid = fork();
         if (pid == 0) {
-                char* argsForGcc[7];
+                char* argsForGcc[8];
                 argsForGcc[0] = "/usr/bin/gcc";
                 argsForGcc[1] = "-shared";
-                argsForGcc[2] = "-o";
-                argsForGcc[3] = (char*)output;
-                argsForGcc[4] = "-fPIC";
-                argsForGcc[5] = (char*)input;
-                argsForGcc[6] = NULL;
+                argsForGcc[2] = "-o3";
+                argsForGcc[3] = "-o";
+                argsForGcc[4] = (char*)output;
+                argsForGcc[5] = "-fPIC";
+                argsForGcc[6] = (char*)input;
+                argsForGcc[7] = NULL;
 
                 execv(argsForGcc[0], argsForGcc);
 
@@ -99,7 +100,7 @@ struct jitc* jitc_open(const char* pathname) {
 }
 
 void jitc_close(struct jitc* jitc) {
-        if (jitc->handle != NULL) {
+        if (NULL != jitc && NULL != jitc->handle) {
                 dlclose(jitc->handle);
         }
         free(jitc);
