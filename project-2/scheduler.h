@@ -25,16 +25,14 @@ typedef void (*scheduler_fnc_t)(void *arg);
 struct job {
         scheduler_fnc_t fnc;
         void* arg;
-        job* next;
+        struct job* next;
 };
 
 struct scheduler {
-        job* head;
+        struct job* head;
 };
 
 void scheduler_init(void);
-
-scheduler sch_obj;
 
 /**
  * Creates a new user thread.

@@ -23,8 +23,10 @@
 
 /* research the above Needed API and design accordingly */
 
+struct scheduler* sch_obj = NULL;
+
 void scheduler_init(void) {
-        sch_obj = malloc(sizeof(scheduler));
+        sch_obj = (struct scheduler*)malloc(sizeof(struct scheduler));
         sch_obj->head = NULL;
 }
 
@@ -35,11 +37,14 @@ int scheduler_create(scheduler_fnc_t fnc, void* arg) {
          * optional - taking lock on job queue
          */
 
+        struct job* j;
+        struct job* last;
+
         if (NULL == sch_obj) {
                 return -1;
         }
 
-        job* j = malloc(sizeof(job));
+        j = (struct job*)malloc(sizeof(struct job));
         j->fnc = fnc;
         j->arg = arg;
         j->next = NULL;
@@ -56,9 +61,10 @@ int scheduler_create(scheduler_fnc_t fnc, void* arg) {
         }
 
         last->next = j;
+        return 0;
 }
 
-void scheduelr_execute(void) {
+void scheduler_execute(void) {
 }
 
 void scheduler_yield(void) {
