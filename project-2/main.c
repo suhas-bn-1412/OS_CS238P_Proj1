@@ -20,7 +20,7 @@ _thread_(void *arg)
 	for (i=0; i<100; ++i) {
 		printf("%s %d\n", name, i);
 		us_sleep(20000);
-		scheduler_yield();
+		/* scheduler_yield(); */
 	}
 }
 
@@ -33,7 +33,7 @@ main(int argc, char *argv[])
         scheduler_init();
 
 	if (scheduler_create(_thread_, "hello") ||
-	    scheduler_create(_thread_, "world") ||
+            scheduler_create(_thread_, "world") ||
 	    scheduler_create(_thread_, "love") ||
 	    scheduler_create(_thread_, "this") ||
 	    scheduler_create(_thread_, "course!")) {
@@ -41,6 +41,9 @@ main(int argc, char *argv[])
 		return -1;
 	}
 
+        signal(SIGALRM, interrupt_handler);
+        alarm(1);
 	scheduler_execute();
+
 	return 0;
 }

@@ -10,6 +10,10 @@
 #ifndef _SCHEDULER_H_
 #define _SCHEDULER_H_
 
+#include <setjmp.h>
+#include <unistd.h>
+#include <signal.h>
+
 /**
  * scheduler_fnc_t defines the signature of the user thread function to
  * be scheduled by the scheduler. The user thread function will be supplied
@@ -18,18 +22,24 @@
 
 typedef void (*scheduler_fnc_t)(void *arg);
 
-
 /**
  * job represents the job that the scheduler runs
  */
 struct job {
+        void* start_addr;
+        void* stack_addr;
         scheduler_fnc_t fnc;
         void* arg;
+        jmp_buf env;
+        int status;
         struct job* next;
 };
 
 struct scheduler {
+        jmp_buf env;
         struct job* head;
+        struct job* curr;
+        struct job* prev;
 };
 
 void scheduler_init(void);
@@ -64,5 +74,10 @@ void scheduler_execute(void);
  */
 
 void scheduler_yield(void);
+
+/**
+ * Handler to handle the sigalrm interrupt
+ */
+void interrupt_handler(int signal);
 
 #endif /* _SCHEDULER_H_ */
