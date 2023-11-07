@@ -146,7 +146,7 @@ void *scm_malloc(struct scm *scm, size_t n) {
                 return addr;
         }
         
-        if (scm->used + n + 2*(sizeof(size_t))> scm->size) {
+        if ((scm->used + n + ADDR_INFO_BYTES) > scm->size) {
                 EXIT("not enough memory");
                 return NULL;
         }
@@ -154,9 +154,9 @@ void *scm_malloc(struct scm *scm, size_t n) {
         addr_info = (size_t*)((char*)scm->base_addr + scm->used);
         addr_info[0] = 1; /* memory is in use */
         addr_info[1] = n;
-        scm->used = scm->used + n + 2*(sizeof(size_t));
+        scm->used += n + ADDR_INFO_BYTES;
         scm->size_info[1] = scm->used;
-        addr = (void*)(addr_info + 2);
+        addr = (void*)((char*)addr_info + ADDR_INFO_BYTES);
         return addr;
 }
 
@@ -171,6 +171,7 @@ void scm_close(struct scm *scm) {
 char *scm_strdup(struct scm *scm, const char *s) {
         char *temp;
         size_t *addr_info;
+
         addr_info = (size_t *)((char *)scm->base_addr + scm->used);
         addr_info[0] = 1;
         addr_info[1] = strlen(s) + 1;
@@ -178,7 +179,8 @@ char *scm_strdup(struct scm *scm, const char *s) {
         temp =  (char*)addr_info + ADDR_INFO_BYTES;
 
         strcpy(temp, s);
-        scm->used = scm->used + ADDR_INFO_BYTES + addr_info[1];
+        scm->used += ADDR_INFO_BYTES + addr_info[1];
+        scm->size_info[1] = scm->used;
         return temp;
 }
 
@@ -221,7 +223,6 @@ void scm_free(struct scm *scm, void *p) {
 
         addr_info = (size_t*)p - 2;
         addr_info[0] = 0; /* not in use */
-        scm->used -= (addr_info[1] + ADDR_INFO_BYTES);
         return;
 }
 
@@ -234,5 +235,8 @@ size_t scm_capacity(const struct scm *scm) {
 }
 
 void *scm_mbase(struct scm *scm) {
-        return (void*)((size_t*)scm->base_addr + 2);
+        if (scm->used) {
+                return (void*)((size_t*)scm->base_addr + 2);
+        }
+        return scm->base_addr;
 }
