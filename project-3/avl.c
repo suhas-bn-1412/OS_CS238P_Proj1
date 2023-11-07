@@ -143,50 +143,76 @@ traverse(struct node *node, avl_fnc_t fnc, void *arg)
 	}
 }
 
+struct node* find_min(struct node* node) {
+        while(node->left) {
+                node = node->left;
+        }
+        return node;
+}
+
 static struct node*
 delete(struct avl *avl, struct node *root, const char *item)
 {
-        int d;
+    int cmp;
+    int balancefactor;
+    struct node *temp;
+    void *str_to_delete;
+    if (root == NULL)
+         return root;
 
-        if (!root)
-                return root;
+     cmp = strcmp(item, root->item);
 
-        d = strcmp(item, root->item);
-        if (d < 0) {
-                root->left = delete(avl, root->left, item);
-        } else if (d > 0) {
-                root->right = delete(avl, root->right, item);
-        } else if (root->count > 1) {
-                root->count--;
-                return NULL;
-        } else {
-                if (!root->left || !root->right) {
-                        struct node *temp = root->left ? root->left : root->right;
-                        scm_free(avl->scm, temp);
-                        return temp;
-                }
+     if (cmp < 0)
+         root->left = delete(avl, root->left, item);
+     else if (cmp > 0)
+         root->right = delete(avl, root->right, item);
+     else {
+         if (root->count > 1) {
+             root->count--;
+         } else {
+             if (root->left == NULL) {
+                 struct node *temp = root->right;
+                 scm_free(avl->scm, (void *)root->item);
+                 scm_free(avl->scm, root);
+                 return temp;
+             } else if (root->right == NULL) {
+                 struct node *temp = root->left;
+                 scm_free(avl->scm, (void *)root->item);
+                 scm_free(avl->scm, root);
+                 return temp;
+             }
 
-                root->depth = depth(root->left, root->right);
+             temp = find_min(root->right);
+             str_to_delete = (void*)root->item;
+             root->item = scm_strdup(avl->scm, temp->item);
+             root->count = temp->count;
+             scm_free(avl->scm, str_to_delete);
+             temp->count = 1;
+             root->right = delete(avl, root->right, temp->item);
+         }
+     }
+     root->depth = depth(root->left,root->right);
+     balancefactor = balance(root);
 
-                d = balance(root);
+     if (balancefactor > 1) {
+         if (balance(root->left) >= 0)
+             return rotate_right(root);
+         else {
+             root->left = rotate_left(root->left);
+             return rotate_right(root);
+         }
+     }
 
-                if (d > 1 && strcmp(item, root->left->item) < 0)
-                        return rotate_right(root);
+     if (balancefactor < -1) {
+         if (balance(root->right) <= 0)
+             return rotate_left(root);
+         else {
+             root->right = rotate_right(root->right);
+             return rotate_left(root);
+         }
+     }
 
-                if (d < -1 && strcmp(item, root->right->item) > 0)
-                        return rotate_left(root);
-
-                if (d > 1 && strcmp(item, root->left->item) > 0) {
-                        root->left = rotate_left(root->left);
-                        return rotate_right(root);
-                }
-
-                if (d < -1 && strcmp(item, root->right->item) < 0) {
-                        root->right = rotate_right(root->right);
-                        return rotate_left(root);
-                }
-        }
-        return root;
+     return root;
 }
 
 struct avl *
@@ -293,12 +319,14 @@ print(const struct node *node, int space)
         printf("%s(%ld)", node->item, node->count);
 
         print(node->left, space);
+        return;
 }
 
 void
 avl_print(const struct avl *avl)
 {
         print(avl->state->root, 0);
+        printf("\n");
 }
 
 void

@@ -222,7 +222,6 @@ void scm_free(struct scm *scm, void *p) {
         addr_info = (size_t*)p - 2;
         addr_info[0] = 0; /* not in use */
         scm->used -= (addr_info[1] + ADDR_INFO_BYTES);
-        memset(p, 0, (int)addr_info[1]);
         return;
 }
 
