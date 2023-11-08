@@ -277,8 +277,17 @@ avl_insert(struct avl *avl, const char *item)
 int
 avl_delete(struct avl *avl, const char *item)
 {
+        int count;
+
         assert( avl );
         assert( safe_strlen(item) );
+
+        count = avl_exists(avl, item);
+        assert( count != 0 );
+
+        avl->state->items--;
+        if (count == 1)
+            avl->state->unique--;
 
         avl->state->root = delete(avl, avl->state->root, item);
 

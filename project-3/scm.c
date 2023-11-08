@@ -27,8 +27,8 @@
  * execution of the process, and this much data is
  * currently stored in the file
  */
-#define SIZE_INFO_ID INT_MAX-1
-#define SIZE_INFO_BYTES 2*sizeof(int)
+#define SIZE_INFO_ID SIZE_MAX-1
+#define SIZE_INFO_BYTES 3*sizeof(size_t)
 #define ADDR_INFO_BYTES 2*sizeof(size_t)
 
 /**
@@ -43,18 +43,14 @@
  *   msync()
  */
 
-struct map {
-        void *addr;
-        size_t size;
-};
-
 struct scm {
         int fd;
         size_t size;
-        size_t used;
+        size_t used_bytes; /* total bytes used in scm region(includes metadata) */
+        size_t user_bytes; /* total bytes that is currently used by application */
+        size_t* size_info;
         void *base_addr;
         void *mapped_addr;
-        int* size_info;
 };
 
 /* research the above Needed API and design accordingly */
@@ -79,8 +75,17 @@ struct scm *scm_open(const char* pathname, int truncate) {
         }
 
         fstat(scm->fd, &statbuf);
+
+        if (!S_ISREG(statbuf.st_mode)) {
+                TRACE("file type is not 'Regular'");
+                close(scm->fd);
+                free(scm);
+                scm = NULL;
+                return NULL;
+        }
+
         scm->size = statbuf.st_size;
-        scm->used = 0;
+        scm->used_bytes = 0;
 
         /**
          * scm has fd, size of the file in bytes 
@@ -96,7 +101,7 @@ struct scm *scm_open(const char* pathname, int truncate) {
                                 scm->fd,
                                 0);
 
-        if (MAP_FAILED == scm->mapped_addr) {
+        if ((MAP_FAILED == scm->mapped_addr) || ((void*)VM_START_ADDR != scm->mapped_addr)) {
                 TRACE("map failed");
                 free(scm);
                 scm = NULL;
@@ -105,7 +110,7 @@ struct scm *scm_open(const char* pathname, int truncate) {
 
         scm->base_addr = (void*)((char*)scm->mapped_addr + SIZE_INFO_BYTES);
 
-        scm->size_info = (int*)scm->mapped_addr;
+        scm->size_info = (size_t*)scm->mapped_addr;
         if ((SIZE_INFO_ID != scm->size_info[0]) || truncate) {
                 /* first invocation, or truncate is true
                  * in this case, the size should be set to 0
@@ -114,10 +119,10 @@ struct scm *scm_open(const char* pathname, int truncate) {
                  */
                 scm->size_info[0] = SIZE_INFO_ID;
                 scm->size_info[1] = 0;
-                scm->used = 0;
+                scm->size_info[2] = 0;
         }
-        scm->used = scm->size_info[1];
-        printf("file has %ld bytes of data\n", scm->used);
+        scm->used_bytes = scm->size_info[1];
+        scm->user_bytes = scm->size_info[2];
 
         close(scm->fd);
 
@@ -128,41 +133,39 @@ void *scm_malloc(struct scm *scm, size_t n) {
         size_t *addr_info;
         void *addr;
         void *base;
-        bool found;
 
-        found = false;
         addr = base = scm_mbase(scm);
-        while (!found && (addr < (void*)((char*)base + scm->used))) {
+        while (addr < (void*)((char*)base + scm->used_bytes)) {
                 addr_info = (size_t*)addr - 2;
                 if ((addr_info[0] == 0) && (addr_info[1] >= n)) {
-                        found = true;
-                        break;
+                        addr_info[0] = 1;
+                        return addr;
                 }
-                addr = (void*)((char*)addr + ((size_t*)addr-2)[1] + ADDR_INFO_BYTES);
+                addr = (void*)((char*)addr + addr_info[1] + ADDR_INFO_BYTES);
         }
 
-        if (found) {
-                addr_info[0] = 1;
-                return addr;
-        }
-        
-        if ((scm->used + n + ADDR_INFO_BYTES) > scm->size) {
+        if ((scm->used_bytes + n + ADDR_INFO_BYTES) > scm->size) {
                 EXIT("not enough memory");
                 return NULL;
         }
         
-        addr_info = (size_t*)((char*)scm->base_addr + scm->used);
+        addr_info = (size_t*)((char*)scm->base_addr + scm->used_bytes);
         addr_info[0] = 1; /* memory is in use */
         addr_info[1] = n;
-        scm->used += n + ADDR_INFO_BYTES;
-        scm->size_info[1] = scm->used;
+
+        scm->user_bytes += n;
+        scm->used_bytes += (n + ADDR_INFO_BYTES);
+        scm->size_info[1] = scm->used_bytes;
+        scm->size_info[2] = scm->user_bytes;
+        
         addr = (void*)((char*)addr_info + ADDR_INFO_BYTES);
         return addr;
 }
 
 void scm_close(struct scm *scm) {
         scm->size_info[0] = SIZE_INFO_ID;
-        scm->size_info[1] = scm->used;
+        scm->size_info[1] = scm->used_bytes;
+        scm->size_info[2] = scm->user_bytes;
         msync(scm->mapped_addr, scm->size, MS_SYNC);
         munmap(scm->mapped_addr, scm->size);
         free(scm);
@@ -172,35 +175,34 @@ char *scm_strdup(struct scm *scm, const char *s) {
         char *temp;
         size_t *addr_info;
 
-        addr_info = (size_t *)((char *)scm->base_addr + scm->used);
+        addr_info = (size_t*)((char*)scm->base_addr + scm->used_bytes);
         addr_info[0] = 1;
         addr_info[1] = strlen(s) + 1;
 
         temp =  (char*)addr_info + ADDR_INFO_BYTES;
-
         strcpy(temp, s);
-        scm->used += ADDR_INFO_BYTES + addr_info[1];
-        scm->size_info[1] = scm->used;
+
+        scm->user_bytes += addr_info[1];
+        scm->used_bytes += (addr_info[1] + ADDR_INFO_BYTES);
+        scm->size_info[1] = scm->used_bytes;
+        scm->size_info[2] = scm->user_bytes;
+
         return temp;
 }
 
 bool scm_allocated_addr(struct scm* scm, void *p) {
         void* addr;
         void* base;
-        bool found;
 
         addr = base = scm_mbase(scm);
-        found = false;
-
-        while (!found && (addr < (void*)((char*)base + scm->used))) {
+        while (addr < (void*)((char*)base + scm->used_bytes)) {
                 if (addr == p) {
-                        found = true;
-                        break;
+                        return true;
                 }
 
                 addr = (void*)((char*)addr + ((size_t*)addr-2)[1] + ADDR_INFO_BYTES);
         }
-        return found;
+        return false;
 }
 
 /**
@@ -223,11 +225,13 @@ void scm_free(struct scm *scm, void *p) {
 
         addr_info = (size_t*)p - 2;
         addr_info[0] = 0; /* not in use */
+        scm->user_bytes -= addr_info[1];
+        scm->size_info[2] = scm->user_bytes;
         return;
 }
 
 size_t scm_utilized(const struct scm *scm) {
-        return scm->used;
+        return scm->user_bytes;
 }
 
 size_t scm_capacity(const struct scm *scm) {
@@ -235,7 +239,7 @@ size_t scm_capacity(const struct scm *scm) {
 }
 
 void *scm_mbase(struct scm *scm) {
-        if (scm->used) {
+        if (scm->used_bytes) {
                 return (void*)((size_t*)scm->base_addr + 2);
         }
         return scm->base_addr;
