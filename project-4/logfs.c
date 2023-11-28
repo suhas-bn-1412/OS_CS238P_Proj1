@@ -42,10 +42,11 @@ struct logfs {
                 void *tail;
                 void *buf;
                 uint8_t active_blks;
-                pthread_mutex_t mutex;
-                pthread_mutex_t active_blks_mutex;
                 pthread_cond_t producer_cond;
                 pthread_cond_t consumer_cond;
+                pthread_mutex_t producer_mutex;
+                pthread_mutex_t consumer_mutex;
+                pthread_mutex_t active_blks_mutex;
         } write_buf;
 
         struct read_buf rcache[RCACHE_BLOCKS];
@@ -58,6 +59,22 @@ struct logfs {
         uint64_t blk_sz;
         uint64_t available;
 };
+
+uint8_t current_active_blks(struct logfs *logfs) {
+        uint8_t tmp;
+        if (0 != pthread_mutex_lock(&logfs->write_buf.active_blks_mutex)) {
+                TRACE("error while locking");
+                exit(1);
+        }
+
+        tmp = logfs->write_buf.active_blks;
+
+        if (0 != pthread_mutex_unlock(&logfs->write_buf.active_blks_mutex)) {
+                TRACE("error while unlocking");
+                exit(1);
+        }
+        return tmp;
+}
 
 void increment_active_blk(struct logfs *logfs, int val) {
         if (0 != pthread_mutex_lock(&logfs->write_buf.active_blks_mutex)) {
@@ -82,6 +99,7 @@ void increment_head(struct logfs *logfs) {
         }
 
         increment_active_blk(logfs, 1);
+        pthread_cond_signal(&logfs->write_buf.consumer_cond);
 }
 
 void increment_tail(struct logfs *logfs) {
@@ -93,27 +111,43 @@ void increment_tail(struct logfs *logfs) {
         }
 
         increment_active_blk(logfs, -1);
+        pthread_cond_signal(&logfs->write_buf.producer_cond);
 }
 
 void write_to_device(struct logfs* logfs) {
-        if (0 != pthread_mutex_lock(&logfs->write_buf.mutex)) {
-                TRACE("error while acquiring the lock");
-                exit(1);
-        }
+        void *tmp_buf = malloc(2*logfs->blk_sz);
+        void *buf = memory_align(tmp_buf, logfs->blk_sz);
 
-        if (0 != pthread_cond_wait(&logfs->write_buf.consumer_cond,
-                                   &logfs->write_buf.mutex)) {
-                TRACE("error while waiting for consumer condition variable");
-                exit(1);
+        while (current_active_blks(logfs) == 0) {
+                if (0 != pthread_mutex_lock(&logfs->write_buf.consumer_mutex)) {
+                        TRACE("error while acquiring the lock");
+                        exit(1);
+                }
+
+                if (0 != pthread_cond_wait(&logfs->write_buf.consumer_cond,
+                                           &logfs->write_buf.consumer_mutex)) {
+                        TRACE("error while waiting for consumer condition variable");
+                        exit(1);
+                }
+
+                if (0 != pthread_mutex_unlock(&logfs->write_buf.consumer_mutex)) {
+                        TRACE("error while releasing the lock");
+                        exit(1);
+                }
         }
 
         assert( logfs->write_buf.tail!=logfs->write_buf.head );
 
-        device_write(logfs->device,
-                     logfs->write_buf.tail,
-                     logfs->device_offset,
-                     logfs->blk_sz);
+        memcpy(buf, logfs->write_buf.tail, logfs->blk_sz);
+        if (device_write(logfs->device,
+                         buf,
+                         logfs->device_offset,
+                         logfs->blk_sz)) {
+                TRACE("device write failed");
+                exit(1);
+        }
 
+        free(tmp_buf);
         logfs->device_offset += logfs->blk_sz;
 
         increment_tail(logfs);
@@ -122,16 +156,56 @@ void write_to_device(struct logfs* logfs) {
 }
 
 void write_to_queue(struct logfs* logfs, void *buf) {
-        while (logfs->write_buf.active_blks >= WCACHE_BLOCKS) {
+        TRACE("write to queue");
+        while (current_active_blks(logfs) >= WCACHE_BLOCKS) {
+                if (0 != pthread_mutex_lock(&logfs->write_buf.producer_mutex)) {
+                        TRACE("error while releasing the lock");
+                        exit(1);
+                }
+
                 if (0 != pthread_cond_wait(&logfs->write_buf.producer_cond,
-                                           &logfs->write_buf.mutex)) {
+                                           &logfs->write_buf.producer_mutex)) {
                         TRACE("error while waiting for producer condition variable");
+                        exit(1);
+                }
+
+                if (0 != pthread_mutex_unlock(&logfs->write_buf.producer_mutex)) {
+                        TRACE("error while releasing the lock");
                         exit(1);
                 }
         }
 
         memcpy(logfs->write_buf.head, buf, logfs->blk_sz);
         increment_head(logfs);
+}
+
+void flush_write_buffer(struct logfs *logfs) {
+        memset(logfs->cur_off, 0, logfs->available);
+        write_to_queue(logfs, logfs->cur_blk);
+
+        /**
+         * wait till all blocks are written
+         * to the device
+         */
+
+        while (current_active_blks(logfs) > 0) {
+                if (0 != pthread_mutex_lock(&logfs->write_buf.producer_mutex)) {
+                        TRACE("error while releasing the lock");
+                        exit(1);
+                }
+
+                if (0 != pthread_cond_wait(&logfs->write_buf.producer_cond,
+                                           &logfs->write_buf.producer_mutex)) {
+                        TRACE("error while waiting for producer condition variable");
+                        exit(1);
+                }
+
+                if (0 != pthread_mutex_unlock(&logfs->write_buf.producer_mutex)) {
+                        TRACE("error while releasing the lock");
+                        exit(1);
+                }
+        }
+        return;
 }
 
 void* thread(void* arg) {
@@ -157,6 +231,7 @@ struct logfs *logfs_open(const char *pathname) {
         logfs->write_buf.buf = malloc(WCACHE_BLOCKS * logfs->blk_sz);
         logfs->write_buf.head = logfs->write_buf.buf;
         logfs->write_buf.tail = logfs->write_buf.buf;
+        logfs->write_buf.active_blks = 0;
 
         logfs->cur_blk = malloc(logfs->blk_sz);
         logfs->cur_off = logfs->cur_blk;
@@ -186,7 +261,17 @@ struct logfs *logfs_open(const char *pathname) {
                 exit(1);
         }
 
-        if (0 != pthread_mutex_init(&logfs->write_buf.mutex, NULL)) {
+        if (0 != pthread_mutex_init(&logfs->write_buf.consumer_mutex, NULL)) {
+                TRACE("unable to initialise mutex variable");
+                exit(1);
+        }
+
+        if (0 != pthread_mutex_init(&logfs->write_buf.producer_mutex, NULL)) {
+                TRACE("unable to initialise mutex variable");
+                exit(1);
+        }
+
+        if (0 != pthread_mutex_init(&logfs->write_buf.active_blks_mutex, NULL)) {
                 TRACE("unable to initialise mutex variable");
                 exit(1);
         }
@@ -200,7 +285,8 @@ void logfs_close(struct logfs* logfs) {
         /*destroy the condition variables and mutex */
         pthread_cond_destroy(&logfs->write_buf.producer_cond);
         pthread_cond_destroy(&logfs->write_buf.consumer_cond);
-        pthread_mutex_destroy(&logfs->write_buf.mutex);
+        pthread_mutex_destroy(&logfs->write_buf.consumer_mutex);
+        pthread_mutex_destroy(&logfs->write_buf.producer_mutex);
 
         /* wait for the thread to join */
         /* cancel thread, if there is no way thread can exit gracefully */
@@ -223,6 +309,10 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
         buf_ = (void*)buf;
         left_to_write = len;
 
+        char info[100];
+        sprintf(info, "append - %ld", len);
+        TRACE(info);
+
         while(left_to_write > logfs->available) {
                 memcpy(logfs->cur_off, buf_, logfs->available);
                 write_to_queue(logfs, logfs->cur_blk);
@@ -235,9 +325,11 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
                 logfs->cur_off = logfs->cur_blk;
         }
 
-        memcpy(logfs->cur_off, buf_, left_to_write);
-        logfs->cur_off = (void*)((char*)logfs->cur_off + left_to_write);
-        logfs->available -= left_to_write;
+        if (0 != left_to_write) {
+                memcpy(logfs->cur_off, buf_, left_to_write);
+                logfs->cur_off = (void*)((char*)logfs->cur_off + left_to_write);
+                logfs->available -= left_to_write;
+        }
 
         return 0;
 }
@@ -257,16 +349,22 @@ int read_mem(struct logfs *logfs, const uint64_t blk_start, void *buf, uint64_t 
         uint64_t blk_off;
         void *start;
         struct read_buf *rcache_unit;
+        void *tmp_buf = malloc(2*logfs->blk_sz);
+        void *buf_ = memory_align(tmp_buf, logfs->blk_sz);
 
         rc_idx = (blk_start / logfs->blk_sz) % RCACHE_BLOCKS;
         rcache_unit = &logfs->rcache[rc_idx];
 
         if (blk_start != rcache_unit->blk) {
                 /* read the block from device */
+                TRACE("reading cache");
                 rcache_unit->blk = blk_start;
-                device_read(logfs->device, rcache_unit->buf, blk_start, logfs->blk_sz);
+                if (device_read(logfs->device, buf_, blk_start, logfs->blk_sz)) {
+                        return -1;
+                }
+                memcpy(rcache_unit->buf, buf_, logfs->blk_sz);
         }
-
+        free(tmp_buf);
         blk_off = off - blk_start;
         start = (void*)((char*)rcache_unit->buf + blk_off);
         memcpy(buf, start, len);
@@ -279,6 +377,15 @@ int logfs_read(struct logfs *logfs, void *buf, uint64_t off, size_t len) {
         uint64_t read_len;
         uint64_t blk_start;
         uint64_t left_to_read;
+        
+        char info[100];
+        sprintf(info, "active blocks to flush - %d", logfs->write_buf.active_blks);
+        TRACE(info);
+
+        flush_write_buffer(logfs);
+
+        sprintf(info, "active blocks after flush - %d", logfs->write_buf.active_blks);
+        TRACE(info);
 
         buf_ = buf;
         off_ = off;
@@ -287,7 +394,9 @@ int logfs_read(struct logfs *logfs, void *buf, uint64_t off, size_t len) {
         blk_start = block_start(logfs, off);
         read_len = MIN(len, blk_start + logfs->blk_sz - off);
 
-        read_mem(logfs, blk_start, buf_, off_, read_len);
+        if (read_mem(logfs, blk_start, buf_, off_, read_len)) {
+                return -1;
+        }
         blk_start += logfs->blk_sz;
         buf_ = (void*)((char*)buf_ + read_len);
         off_ += read_len;
@@ -295,7 +404,9 @@ int logfs_read(struct logfs *logfs, void *buf, uint64_t off, size_t len) {
 
         while(left_to_read > logfs->blk_sz) {
                 read_len = logfs->blk_sz;
-                read_mem(logfs, blk_start, buf_, off_, read_len);
+                if (read_mem(logfs, blk_start, buf_, off_, read_len)) {
+                        return -1;
+                }
                 blk_start += logfs->blk_sz;
                 buf_ = (void*)((char*)buf_ + read_len);
                 off_ += read_len;
@@ -303,7 +414,9 @@ int logfs_read(struct logfs *logfs, void *buf, uint64_t off, size_t len) {
         }
 
         if (0 != left_to_read) {
-                read_mem(logfs, blk_start, buf_, off_, left_to_read);
+                if (read_mem(logfs, blk_start, buf_, off_, left_to_read)) {
+                        return -1;
+                }
         }
         return 0;
 }

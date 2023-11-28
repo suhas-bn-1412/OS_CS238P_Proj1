@@ -146,6 +146,7 @@ device_write(struct device *device,
 				    buf,
 				    (size_t)len,
 				    (off_t)off)) {
+                printf("pwrite() - %d", errno);
 		TRACE("pwrite()");
 		return -1;
 	}
