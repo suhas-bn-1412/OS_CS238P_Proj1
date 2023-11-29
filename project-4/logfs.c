@@ -324,6 +324,26 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
         return 0;
 }
 
+int check_in_wcache(struct logfs *logfs, const uint64_t blk_start, void *buf) {
+        int start, end, ret;
+        pthread_mutex_lock(&logfs->wc_utils.mutex);
+
+        start = logfs->wc_utils.tail;
+        end = logfs->wc_utils.head;
+        ret = 0;
+        while (start != end) {
+                if (blk_start == logfs->wcache[start].blk) {
+                        memcpy(buf, logfs->wcache[start].buf, logfs->blk_sz);
+                        ret = 1;
+                        break;
+                }
+                start = (start + 1) % WCACHE_BLOCKS;
+        }
+
+        pthread_mutex_unlock(&logfs->wc_utils.mutex);
+        return ret;
+}
+
 int read_mem(struct logfs *logfs, const uint64_t blk_start, void *buf, uint64_t off, size_t len) {
         /**
          * check if the read cache has the block
@@ -331,7 +351,7 @@ int read_mem(struct logfs *logfs, const uint64_t blk_start, void *buf, uint64_t 
          * then from read cache, read it to buf
          */
 
-        uint8_t rc_idx;
+        int rc_idx, wc_idx;
         uint64_t blk_off;
         void *start;
         struct block *rcache_unit;
@@ -344,8 +364,18 @@ int read_mem(struct logfs *logfs, const uint64_t blk_start, void *buf, uint64_t 
         if (blk_start != rcache_unit->blk) {
                 /* read the block from device */
                 rcache_unit->blk = blk_start;
-                if (device_read(logfs->device, buf_, blk_start, logfs->blk_sz)) {
-                        return -1;
+                if (blk_start == block_start(logfs, logfs->off)) {
+                        /* current block */
+                        memcpy(buf_, logfs->cur_blk, logfs->blk_sz);
+                }
+                else if (check_in_wcache(logfs, blk_start, buf_)) {
+                        assert( 1 );
+                }
+                else {
+                        if (device_read(logfs->device, buf_,
+                                        blk_start, logfs->blk_sz)) {
+                                return -1;
+                        }
                 }
                 memcpy(rcache_unit->buf, buf_, logfs->blk_sz);
         }
@@ -362,8 +392,6 @@ int logfs_read(struct logfs *logfs, void *buf, uint64_t off, size_t len) {
         uint64_t read_len;
         uint64_t blk_start;
         uint64_t left_to_read;
-
-        flush_write_buffer(logfs);
 
         buf_ = buf;
         off_ = off;
