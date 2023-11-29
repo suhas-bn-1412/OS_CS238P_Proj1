@@ -68,6 +68,7 @@ kvraw_open(const char *pathname)
 		TRACE(0);
 		return NULL;
 	}
+        off=0;
 	if (kvraw_append(kvraw, "", 1, "", 1, &off)) { /* off = 0 */
 		kvraw_close(kvraw);
 		TRACE(0);
