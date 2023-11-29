@@ -170,7 +170,6 @@ heavy_rewrite(void)
 static int
 basic_logic(void)
 {
-        TRACE("basic logic test");
 	const char * const KEY = "KEY";
 	const char * const VAL1 = "VAL";
 	const char * const VAL2 = "val2";
@@ -191,8 +190,6 @@ basic_logic(void)
 
 	/* invalid lookup */
 
-        TRACE("test start");
-
 	val_len = 0;
 	if ((+1 != kvdb_lookup(kvdb, KEY, SLEN(KEY), 0, 0)) ||
 	    (+1 != kvdb_lookup(kvdb, KEY, SLEN(KEY), 0, &val_len)) ||
@@ -204,8 +201,6 @@ basic_logic(void)
 		return -1;
 	}
 
-        TRACE("invalid lookup passed");
-
 	/* invalid replace */
 
 	if ((+1 != kvdb_replace(kvdb, KEY, SLEN(KEY), VAL1, SLEN(VAL1))) ||
@@ -215,26 +210,24 @@ basic_logic(void)
 		TRACE("software");
 		return -1;
 	}
-        TRACE("invalid replace passed");
 
 	/* insert, lookup, re-insert, lookup */
 
 	val_len = sizeof (val);
 	if (kvdb_insert(kvdb, KEY, SLEN(KEY), VAL1, SLEN(VAL1)) ||
 	    kvdb_lookup(kvdb, KEY, SLEN(KEY), val, &val_len) ||
-	    //(SLEN(VAL1) != val_len) ||
-	    //memcmp(VAL1, val, val_len) ||
-	    //(+1 != kvdb_insert(kvdb, KEY, SLEN(KEY), VAL1, SLEN(VAL1))) ||
-	    //kvdb_lookup(kvdb, KEY, SLEN(KEY), val, &val_len) ||
-	    //(SLEN(VAL1) != val_len) ||
-	    //memcmp(VAL1, val, val_len) ||
+	    (SLEN(VAL1) != val_len) ||
+	    memcmp(VAL1, val, val_len) ||
+	    (+1 != kvdb_insert(kvdb, KEY, SLEN(KEY), VAL1, SLEN(VAL1))) ||
+	    kvdb_lookup(kvdb, KEY, SLEN(KEY), val, &val_len) ||
+	    (SLEN(VAL1) != val_len) ||
+	    memcmp(VAL1, val, val_len) ||
 	    (1 != kvdb_size(kvdb)) ||
 	    (0 != kvdb_waste(kvdb))) {
 		kvdb_close(kvdb);
 		TRACE("software");
 		return -1;
 	}
-        TRACE("insert passed");
 
 	/* replace, lookup, re-insert, lookup */
 
@@ -253,7 +246,6 @@ basic_logic(void)
 		TRACE("software");
 		return -1;
 	}
-        TRACE("replace passed");
 
 	/* update, lookup, re-insert, lookup */
 
@@ -272,7 +264,6 @@ basic_logic(void)
 		TRACE("software");
 		return -1;
 	}
-        TRACE("update passed");
 
 	/* lookup */
 
@@ -286,7 +277,6 @@ basic_logic(void)
 		TRACE("software");
 		return -1;
 	}
-        TRACE("lookup passed");
 
 	/* remove */
 
@@ -301,7 +291,6 @@ basic_logic(void)
 		TRACE("software");
 		return -1;
 	}
-        TRACE("remove passed");
 	kvdb_close(kvdb);
 	return 0;
 }
@@ -329,11 +318,12 @@ main(int argc, char *argv[])
 	/* test */
 
 	TEST(basic_logic, "basic_logic");
-	/* TEST(heavy_rewrite, "heavy_rewrite"); */
-	/* TEST(read_write_single, "read_write_single"); */
-	/* TEST(read_write_small, "read_write_small"); */
-	/* TEST(read_write_large, "read_write_large"); */
-
+        /*
+	TEST(heavy_rewrite, "heavy_rewrite");
+	TEST(read_write_single, "read_write_single");
+        */
+	TEST(read_write_small, "read_write_small");
+	TEST(read_write_large, "read_write_large");
 	/* postlude */
 
 	term_bold();
