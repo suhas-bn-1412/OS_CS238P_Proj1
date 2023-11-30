@@ -46,7 +46,6 @@ struct logfs {
         uint64_t off;
         uint64_t blk_sz;
         uint64_t available;
-        uint8_t cur_blk_in_wcache;
 
         struct wcache_utils {
                 uint8_t head;
@@ -143,36 +142,6 @@ void write_to_queue(struct logfs* logfs, void *buf, uint64_t blk) {
         }
 }
 
-void flush_write_buffer(struct logfs *logfs) {
-        if (!logfs->cur_blk_in_wcache) {
-                write_to_queue(logfs, logfs->cur_blk, block_start(logfs, logfs->off));
-        }
-        logfs->cur_blk_in_wcache = 1;
-        /**
-         * wait till all blocks are written
-         * to the device
-         */
-
-        while (logfs->wc_utils.active_blks > 0) {
-                if (0 != pthread_mutex_lock(&logfs->wc_utils.mutex)) {
-                        TRACE("error while releasing the lock");
-                        exit(1);
-                }
-
-                if (0 != pthread_cond_wait(&logfs->wc_utils.space,
-                                           &logfs->wc_utils.mutex)) {
-                        TRACE("error while waiting for space variable");
-                        exit(1);
-                }
-
-                if (0 != pthread_mutex_unlock(&logfs->wc_utils.mutex)) {
-                        TRACE("error while releasing the lock");
-                        exit(1);
-                }
-        }
-        return;
-}
-
 void* thread(void* arg) {
         struct logfs *logfs = (struct logfs*)arg;
         while (!logfs->done) {
@@ -204,7 +173,6 @@ struct logfs *logfs_open(const char *pathname) {
         logfs->cur_blk = malloc(logfs->blk_sz);
         memset(logfs->cur_blk, 0, logfs->blk_sz);
         logfs->available = logfs->blk_sz;
-        logfs->cur_blk_in_wcache = 1;
 
         logfs->cur_off = logfs->cur_blk;
 
@@ -306,7 +274,6 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
         if (blk == logfs->rcache[rc_idx].blk) {
                 logfs->rcache[rc_idx].blk = 3;
         }
-        logfs->cur_blk_in_wcache = 0;
 
         while(left_to_write >= logfs->available) {
                 memcpy(logfs->cur_off, buf_, logfs->available);
