@@ -191,6 +191,7 @@ struct logfs *logfs_open(const char *pathname) {
         }
 
         logfs->off = 0;
+        logfs->done = 0;
         logfs->blk_sz = device_block(logfs->device);
         logfs->wc_utils.head = 0;
         logfs->wc_utils.tail = 0;
@@ -238,7 +239,10 @@ struct logfs *logfs_open(const char *pathname) {
                 exit(1);
         }
 
-        pthread_create(&logfs->thread_id, NULL, &thread, (void*)logfs);
+        if (0 != pthread_create(&logfs->thread_id, NULL, &thread, (void*)logfs)) {
+                TRACE("unable to spawn thread");
+                exit(1);
+        }
 
         return logfs;
 }
@@ -256,7 +260,9 @@ void logfs_close(struct logfs* logfs) {
         pthread_cond_destroy(&logfs->wc_utils.item);
 
         /* wait for the thread to join */
-        pthread_join(logfs->thread_id, NULL);
+        if (0 != pthread_join(logfs->thread_id, NULL)) {
+                TRACE("error while joining thread");
+        }
 
         /* close the device handle */
         device_close(logfs->device);
