@@ -84,6 +84,10 @@ void write_to_device(struct logfs* logfs) {
         }
 
         if (logfs->done) {
+                if (0 != pthread_mutex_unlock(&logfs->wc_utils.mutex)) {
+                        TRACE("error while releasing the lock");
+                        exit(1);
+                }
                 return;
         }
 
@@ -278,6 +282,7 @@ void logfs_close(struct logfs* logfs) {
                 free(logfs->wcache[i].buf);
         }
 
+        memset(logfs, 0, sizeof(struct logfs));
         free(logfs);
 }
 
@@ -329,19 +334,16 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
 }
 
 int check_in_wcache(struct logfs *logfs, const uint64_t blk_start, void *buf) {
-        int start, end, ret;
+        int i, ret;
         pthread_mutex_lock(&logfs->wc_utils.mutex);
 
-        start = logfs->wc_utils.tail;
-        end = logfs->wc_utils.head;
         ret = 0;
-        while (start != end) {
-                if (blk_start == logfs->wcache[start].blk) {
-                        memcpy(buf, logfs->wcache[start].buf, logfs->blk_sz);
+        for (i=0; i<WCACHE_BLOCKS; i++) {
+                if (blk_start == logfs->wcache[i].blk) {
+                        memcpy(buf, logfs->wcache[i].buf, logfs->blk_sz);
                         ret = 1;
                         break;
                 }
-                start = (start + 1) % WCACHE_BLOCKS;
         }
 
         pthread_mutex_unlock(&logfs->wc_utils.mutex);
