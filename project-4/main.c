@@ -128,7 +128,10 @@ read_write(const uint64_t N, const uint64_t K, const uint64_t V)
 			return -1;
 		}
 	}
-        kvdb_close(kvdb);
+	kvdb_close(kvdb);
+	FREE(key);
+	FREE(val);
+	FREE(val_);
 	return 0;
 }
 
@@ -317,13 +320,13 @@ main(int argc, char *argv[])
 
 	/* test */
 
-	TEST(basic_logic, "basic_logic");
         /*
-	TEST(heavy_rewrite, "heavy_rewrite");
+	TEST(basic_logic, "basic_logic");
 	TEST(read_write_single, "read_write_single");
-        */
-	TEST(read_write_small, "read_write_small");
 	TEST(read_write_large, "read_write_large");
+	TEST(read_write_small, "read_write_small");
+        */
+	TEST(heavy_rewrite, "heavy_rewrite");
 	/* postlude */
 
 	term_bold();

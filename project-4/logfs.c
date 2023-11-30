@@ -75,7 +75,7 @@ void write_to_device(struct logfs* logfs) {
                 exit(1);
         }
         while ((!logfs->done) &&
-               (logfs->wc_utils.active_blks == 0)) {
+               (logfs->wc_utils.active_blks <= 0)) {
                 if (0 != pthread_cond_wait(&logfs->wc_utils.item,
                                            &logfs->wc_utils.mutex)) {
                         TRACE("error while waiting for consumer condition variable");
@@ -84,14 +84,10 @@ void write_to_device(struct logfs* logfs) {
         }
 
         if (logfs->done) {
-                if (0 != pthread_mutex_unlock(&logfs->wc_utils.mutex)) {
-                        TRACE("error while releasing the lock");
-                        exit(1);
-                }
                 return;
         }
 
-        assert( logfs->wc_utils.tail!=logfs->wc_utils.head );
+        assert (0 != logfs->wc_utils.active_blks);
 
         wcache_unit = &logfs->wcache[logfs->wc_utils.tail];
         memcpy(buf, wcache_unit->buf, logfs->blk_sz);
@@ -99,6 +95,11 @@ void write_to_device(struct logfs* logfs) {
         logfs->wc_utils.tail = (logfs->wc_utils.tail + 1) % WCACHE_BLOCKS;
         logfs->wc_utils.active_blks--;
         pthread_cond_signal(&logfs->wc_utils.space);
+
+        if (0 != pthread_mutex_unlock(&logfs->wc_utils.mutex)) {
+                TRACE("error while releasing the lock");
+                exit(1);
+        }
 
         if (device_write(logfs->device,
                          buf,
@@ -108,10 +109,6 @@ void write_to_device(struct logfs* logfs) {
                 exit(1);
         }
         free(tmp_buf);
-        if (0 != pthread_mutex_unlock(&logfs->wc_utils.mutex)) {
-                TRACE("error while releasing the lock");
-                exit(1);
-        }
 }
 
 void write_to_queue(struct logfs* logfs, void *buf, uint64_t blk) {
@@ -302,12 +299,13 @@ int logfs_append(struct logfs *logfs, const void *buf, uint64_t len) {
 
         while(left_to_write >= logfs->available) {
                 memcpy(logfs->cur_off, buf_, logfs->available);
+                buf_ = (void*)((char*)buf_ + logfs->available);
                 logfs->off += logfs->available;
+                left_to_write -= logfs->available;
+                logfs->available = 0;
+
                 write_to_queue(logfs, logfs->cur_blk,
                                block_start(logfs, logfs->off - 1));
-
-                left_to_write -= logfs->available;
-                buf_ = (void*)((char*)buf_ + logfs->available);
 
                 memset(logfs->cur_blk, 0, logfs->blk_sz);
                 logfs->available = logfs->blk_sz;
