@@ -83,6 +83,7 @@ void write_to_device(struct logfs* logfs) {
         }
 
         if (logfs->done) {
+                free(tmp_buf);
                 if (0 != pthread_mutex_unlock(&logfs->wc_utils.mutex)) {
                         TRACE("error while releasing the lock");
                         exit(1);
