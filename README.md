@@ -2,7 +2,7 @@
 UC Irvine CS398P Operating Systems Projects
 
 Project 1:
-  - Write C program into C file, spawn new process using fork and execv to compile this file
+  - Write C program into file through C code, spawn new process using fork and execv to compile this file
   - Compile the file as dynamically loadable library (.so)
   - Using dlopen, load the compiled .so file
   - Using dlsym, find the C program and execute the program
