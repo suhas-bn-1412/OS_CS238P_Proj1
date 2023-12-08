@@ -1,5 +1,5 @@
 # OS_CS238P_Projects
-UC Irvine CS398P Operating Systems Projects
+UC Irvine CS238P Operating Systems Projects
 
 Project 1:
   - Write C program into file through C code, spawn new process using fork and execv to compile this file
