@@ -1,14 +1,14 @@
 # OS_CS238P_Projects
 UC Irvine CS238P Operating Systems Projects
 
-Project 1:
+Project 1: JIT compilation of shared library, and loading it into memory
   - Write C program into file through C code, spawn new process using fork and execv to compile this file
   - Compile the file as dynamically loadable library (.so)
   - Using dlopen, load the compiled .so file
   - Using dlsym, find the C program and execute the program
 
 
-Project 2:
+Project 2: Dynamic thread scheduling, use of setjmp and longjmp to store/restore state
   - Dynamic scheduling of userspace threads
   - Thread invokes yield
   - Using setjmp we store the state of execution for the current thread
@@ -16,7 +16,7 @@ Project 2:
   - Controling the yield from every thread is impossible, so this program registers signal handler for SIGALRM which is sent to program periodically by calling alarm
 
 
-Project 3:
+Project 3: Disk-file backed malloc
   - Use file on disk as a backbone and implement our own malloc function
   - Any call to malloc should provide an address and the specified size should be available for write
   - The data is written to the file
@@ -25,7 +25,7 @@ Project 3:
   - The data is persisted, and upon re-execution of the program, we can access the same data
 
 
-Project 4:
+Project 4: Block/Paged file manager wrapper around native file system api's
   - Use block device (loopback device) to implement a KV store
   - Implemented byte addressable read/writes as a wrapper around block addressable read/writes (pread/pwrite)
   - The wrapper module takes care of caching, to avoid write amplification
@@ -34,6 +34,6 @@ Project 4:
   - Beautiful solution for producer consumer problem in project-4/logfs.c. consumer - write_to_device() and producer - write_to_queue()
 
 
-Project 5:
+Project 5: System monitor command like top using data /proc filesystem
   - Implement 'top' like system monitoring service
   - Use of /proc filesystem to get all the data and dynamically print all the data
